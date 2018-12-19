@@ -4,7 +4,7 @@ import copy
 '''
 Iterative policy evaluation
 Input : 
-    environment:
+    environment: env
         nS : number of states
         nA : number of actions
         P[s][a] : probabilty and next state given present state and action
@@ -75,7 +75,9 @@ def truncated_policy_iteration(env, max_it=1, gamma=1, theta=1e-8):
             break
     return policy, V
 
-def value_iteration(env, gamma=1, theta=1e-8):
+def value_iteration(env, gamma=1, theta=1e-8, epsilon=None):
+    if epsilon is not None:
+        theta = epsilon*(1.0-gamma)/(2.0*gamma)
     V = np.zeros(env.nS)
     while True:
         delta = 0
