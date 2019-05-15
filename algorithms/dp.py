@@ -5,87 +5,83 @@ import copy
 Iterative policy evaluation
 Input : 
     environment: env
-        nS : number of states
-        nA : number of actions
+        action_space
+        observation_space
         P[s][a] : probabilty and next state given present state and action
     policy : action probabilities given state
 output:
     V(s) for each state s
+    Or, the policy
 '''
-def policy_evaluation(env, policy, gamma=1, theta=1e-8):
-    V = np.zeros(env.nS)
-    while True:
-        delta = 0
-        for s in range(env.nS):
-            Vs = 0
-            for a, action_prob in enumerate(policy[s]):
-                for prob, next_state, reward, _ in env.P[s][a]:
-                    Vs += action_prob * prob * (reward + gamma * V[next_state])
-            delta = max(delta, np.abs(V[s]-Vs))
-            V[s] = Vs
-        if delta < theta:
-            break
-    return V
+class DPEnv:
+    def __init__(self, env):
+        self.env = env
+        self.num_states = env.observation_space.n
+        self.num_actions = env.action_space.n
+        
+        P_shape = np.array(env.P).shape
+        assert P_shape[0] == self.num_states
+        assert P_shape[1] == self.num_actions
 
-def q_from_v(env, V, s, gamma=1):
-    q = np.zeros(env.nA)
-    for a in range(env.nA):
-        for prob, next_state, reward, _ in env.P[s][a]:
-            q[a] += prob * (reward + gamma * V[next_state])
-    return q
+    def policy_evaluation(self, policy, gamma=1, theta=1e-8):
+        V = np.zeros(self.num_states)
+        
+        while True:
+            delta = 0
+            for s in range(self.num_states):
+                v = 0
+                for a, action_prob in enumerate(policy[s]):
+                    for prob, next_state, reward, done in self.env.P[s][a]:
+                        v += action_prob * prob * (reward + gamma*V[mext_state])
+                delta = max(delta, np.abs(V[s]-v))
+                V[s] = v
+            if delta < theta:
+                break
+        return V
 
-def policy_improvement(env, V, gamma=1):
-    policy = np.zeros([env.nS, env.nA]) / env.nA
-    for s in range(env.nS):
-        q = q_from_v(env, V, s, gamma)
-        best_a = np.argwhere(q==np.max(q)).flatten()
-        policy[s] = np.sum([np.eye(env.nA)[i] for i in best_a], axis=0)/len(best_a)
-    return policy
+    def q_from_v(self, V, gamma=1):
+        Q = np.zeros((self.num_states, self.num_actions))
 
-def policy_iteration(env, gamma=1, theta=1e-8):
-    policy = np.ones([env.nS, env.nA]) / env.nA
-    while True:
-        V = policy_evaluation(env, policy, gamma, theta)
-        new_policy = policy_improvement(env, V)
-        if (new_policy == policy).all():
-            break        
-        policy = copy.copy(new_policy)
-    return policy, V
+        for s in range(self.num_states):
+            for a in range(self.num_actions):
+                for prob, next_state, reward, done in self.env.P[s][a]:
+                    Q[a][s] += prob * (reward + gamma*V[next_state])
+        return Q
 
-def truncated_policy_evaluation(env, policy, V, max_it=1, gamma=1):
-    num_it=0
-    while num_it < max_it:
-        for s in range(env.nS):
-            v = 0
-            q = q_from_v(env, V, s, gamma)
-            for a, action_prob in enumerate(policy[s]):
-                v += action_prob * q[a]
-            V[s] = v
-        num_it += 1
-    return V
+    def policy_improvement(self, V, gamma=1):
+        policy = np.zeros((self.num_states, self.num_actions))/self.num_actions
+        Q = self.q_from_v(V, gamma)
 
-def truncated_policy_iteration(env, max_it=1, gamma=1, theta=1e-8):
-    V = np.zeros(env.nS)
-    policy = np.zeros([env.nS, env.nA]) / env.nA
-    while True:
-        policy = policy_improvement(env, V)
-        old_V = copy.copy(V)
-        V = truncated_policy_evaluation(env, policy, V, max_it, gamma)
-        if max(abs(V-old_V)) < theta:
-            break
-    return policy, V
+        for s in range(self.num_states):
+            policy[s][np.argmax(Q[s])] = 1
 
-def value_iteration(env, gamma=1, theta=1e-8, epsilon=None):
-    if epsilon is not None:
-        theta = epsilon*(1.0-gamma)/(2.0*gamma)
-    V = np.zeros(env.nS)
-    while True:
-        delta = 0
-        for s in range(env.nS):
-            v = V[s]
-            V[s] = max(q_from_v(env, V, s, gamma))
-            delta = max(delta,abs(V[s]-v))
-        if delta < theta:
-            break
-    policy = policy_improvement(env, V, gamma)
-    return policy, V
+        return policy
+
+    def policy_iteration(self, gamma=1, theta=1e-8):
+        policy = np.ones((self.num_states, self.num_actions))/self.num_actions
+
+        while True:
+            V = self.policy_evaluation(policy, gamma, theta)
+            new_policy = self.policy_improvement(V, gamma)
+
+            if (new_policy == policy).all():
+                break
+
+            policy = np.copy(new_policy)
+
+        return policy
+
+    def value_iteration(self, gamma=1, epsilon=1e-6):
+        V = np.zeros(self.num_state)
+        delta = epsilon * (1-gamma)/(2*gamma)
+        while True:
+            Q = self.q_from_v(V, gamma)
+            V_new = np.max(Q, axis=1)
+
+            if np.max(V_new - V) <= delta:
+                break
+
+            V = np.copy(V_new)
+
+        policy = self.policy_improvement(V, gamma)
+        return policy, V
