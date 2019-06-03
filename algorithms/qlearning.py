@@ -1,10 +1,6 @@
-import sys
-import gym
 import numpy as np
 import random
-import math
-from collections import defaultdict, deque
-import matplotlib.pyplot as plt
+from collections import defaultdict
 
 def epsilon_greedy(Q, state, nA, eps):
     """Selects epsilon-greedy action for supplied state.
@@ -21,58 +17,49 @@ def epsilon_greedy(Q, state, nA, eps):
     else:                     # otherwise, select an action randomly
         return random.choice(np.arange(nA))
 
-def update_Q_sarsamax(alpha, gamma, Q, state, action, reward, next_state=None):
-    """Returns updated Q-value for the most recent experience."""
-    current = Q[state][action]  # estimate in Q-table (for current state, action pair)
-    Qsa_next = np.max(Q[next_state]) if next_state is not None else 0  # value of next state 
-    target = reward + (gamma * Qsa_next)               # construct TD target
-    new_value = current + (alpha * (target - current)) # get updated value 
-    return new_value
+def q_learning(env, num_episodes, alpha, gamma=1.0):
+    Q = defaultdict(lambda: np.zeros(env.action_space.n))
 
-def q_learning(env, num_episodes, alpha, gamma=1.0, plot_every=100):
-    """Q-Learning - TD Control
-    
-    Params
-    ======
-        num_episodes (int): number of episodes to run the algorithm
-        alpha (float): learning rate
-        gamma (float): discount factor
-        plot_every (int): number of episodes to use when calculating average score
-    """
-    nA = env.action_space.n                # number of actions
-    Q = defaultdict(lambda: np.zeros(nA))  # initialize empty dictionary of arrays
-    
-    # monitor performance
-    tmp_scores = deque(maxlen=plot_every)     # deque for keeping track of scores
-    avg_scores = deque(maxlen=num_episodes)   # average scores over every plot_every episodes
-    
-    for i_episode in range(1, num_episodes+1):
-        # monitor progress
-        if i_episode % 100 == 0:
-            print("\rEpisode {}/{}".format(i_episode, num_episodes), end="")
-            sys.stdout.flush()
-        score = 0                                              # initialize score
-        state = env.reset()                                    # start episode
-        eps = 1.0 / i_episode                                  # set value of epsilon
-        
+    for e in range(num_episodes):
+        state = env.reset()
+        eps = 1/(e+1)
+
         while True:
-            action = epsilon_greedy(Q, state, nA, eps)         # epsilon-greedy action selection
-            next_state, reward, done, _ = env.step(action)  # take action A, observe R, S'
-            score += reward                                    # add reward to agent's score
-            Q[state][action] = update_Q_sarsamax(alpha, gamma, Q, \
-                                                 state, action, reward, next_state)        
-            state = next_state                                 # S <- S'
+            action = epsilon_greedy(Q, state, env.action_space.n, eps)
+            next_state, reward, done, info = env.step(action)
+
+            delta = reward + gamma*np.max(Q[next_state]) - Q[state][action]
+            Q[state][action] = Q[state][action] + alpha*delta
+
+            state = next_state
+
             if done:
-                tmp_scores.append(score)                       # append score
                 break
-        if (i_episode % plot_every == 0):
-            avg_scores.append(np.mean(tmp_scores))
-            
-    # plot performance
-    plt.plot(np.linspace(0,num_episodes,len(avg_scores),endpoint=False), np.asarray(avg_scores))
-    plt.xlabel('Episode Number')
-    plt.ylabel('Average Reward (Over Next %d Episodes)' % plot_every)
-    plt.show()
-    # print best 100-episode performance
-    print(('Best Average Reward over %d Episodes: ' % plot_every), np.max(avg_scores))
+
     return Q
+
+def double_q_learning(env, num_episodes, alpha, gamma=1.0):
+    Q1 = np.zeros((env.observation_space.n, env.action_space.n))
+    Q2 = np.zeros((env.observation_space.n, env.action_space.n))
+
+    for e in range(num_episodes):
+        state = env.reset()
+        eps = 1/(e+1)
+
+        while True:
+            action = epsilon_greedy(Q1+Q2, state, env.action_space.n, eps)
+            next_state, reward, done, info = env.step(action)
+
+            delta = 0
+            if random.random()>0.5:
+                delta = reward + gamma*np.max(Q2[next_state]) - Q[state][action]
+                Q1[state][action] = Q1[state][action] + alpha*delta
+            else:
+                delta = reward + gamma*np.max(Q1[next_state]) - Q[state][action]
+                Q2[state][action] = Q2[state][action] + alpha*delta
+
+            state = next_state
+
+            if done:
+                break
+    return (Q1+Q2)/2
